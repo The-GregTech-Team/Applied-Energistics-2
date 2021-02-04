@@ -92,6 +92,8 @@ public class JEIPlugin implements IModPlugin
 		registry.getRecipeTransferRegistry()
 				.addRecipeTransferHandler( new RecipeTransferHandler<>( ContainerPatternTerm.class ),
 						VanillaRecipeCategoryUid.CRAFTING );
+
+		registry.addAdvancedGuiHandlers(new FluidTerminalGuiHandler());
 	}
 
 	private void registerDescriptions( IDefinitions definitions, IModRegistry registry )

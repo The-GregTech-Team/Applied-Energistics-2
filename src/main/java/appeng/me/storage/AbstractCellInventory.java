@@ -19,10 +19,6 @@
 package appeng.me.storage;
 
 
-import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NBTTagCompound;
-import net.minecraftforge.items.IItemHandler;
-
 import appeng.api.config.FuzzyMode;
 import appeng.api.implementations.items.IStorageCell;
 import appeng.api.storage.ICellInventory;
@@ -30,6 +26,9 @@ import appeng.api.storage.ISaveProvider;
 import appeng.api.storage.data.IAEStack;
 import appeng.api.storage.data.IItemList;
 import appeng.util.Platform;
+import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NBTTagCompound;
+import net.minecraftforge.items.IItemHandler;
 
 
 /**
@@ -37,316 +36,268 @@ import appeng.util.Platform;
  * @version rv6 - 2018-01-17
  * @since rv6 2018-01-17
  */
-public abstract class AbstractCellInventory<T extends IAEStack<T>> implements ICellInventory<T>
-{
-	private static final int MAX_ITEM_TYPES = 63;
-	private static final String ITEM_TYPE_TAG = "it";
-	private static final String ITEM_COUNT_TAG = "ic";
-	private static final String ITEM_SLOT = "#";
-	private static final String ITEM_SLOT_COUNT = "@";
-	protected static final String ITEM_PRE_FORMATTED_COUNT = "PF";
-	protected static final String ITEM_PRE_FORMATTED_SLOT = "PF#";
-	protected static final String ITEM_PRE_FORMATTED_NAME = "PN";
-	protected static final String ITEM_PRE_FORMATTED_FUZZY = "FP";
-	private static final String[] ITEM_SLOT_KEYS = new String[MAX_ITEM_TYPES];
-	private static final String[] ITEM_SLOT_COUNT_KEYS = new String[MAX_ITEM_TYPES];
-	private final NBTTagCompound tagCompound;
-	protected final ISaveProvider container;
-	private int maxItemTypes = MAX_ITEM_TYPES;
-	private short storedItems = 0;
-	private int storedItemCount = 0;
-	protected IItemList<T> cellItems;
-	private final ItemStack i;
-	protected final IStorageCell<T> cellType;
-	protected final int itemsPerByte;
-	private boolean isPersisted = true;
+public abstract class AbstractCellInventory<T extends IAEStack<T>> implements ICellInventory<T> {
+    protected static final String ITEM_PRE_FORMATTED_COUNT = "PF";
+    protected static final String ITEM_PRE_FORMATTED_SLOT = "PF#";
+    protected static final String ITEM_PRE_FORMATTED_NAME = "PN";
+    protected static final String ITEM_PRE_FORMATTED_FUZZY = "FP";
+    private static final int MAX_ITEM_TYPES = 63;
+    private static final String ITEM_TYPE_TAG = "it";
+    private static final String ITEM_COUNT_TAG = "ic";
+    private static final String ITEM_SLOT = "#";
+    private static final String ITEM_SLOT_COUNT = "@";
+    private static final String[] ITEM_SLOT_KEYS = new String[MAX_ITEM_TYPES];
+    private static final String[] ITEM_SLOT_COUNT_KEYS = new String[MAX_ITEM_TYPES];
 
-	static
-	{
-		for( int x = 0; x < MAX_ITEM_TYPES; x++ )
-		{
-			ITEM_SLOT_KEYS[x] = ITEM_SLOT + x;
-			ITEM_SLOT_COUNT_KEYS[x] = ITEM_SLOT_COUNT + x;
-		}
-	}
+    static {
+        for (int x = 0; x < MAX_ITEM_TYPES; x++) {
+            ITEM_SLOT_KEYS[x] = ITEM_SLOT + x;
+            ITEM_SLOT_COUNT_KEYS[x] = ITEM_SLOT_COUNT + x;
+        }
+    }
 
-	protected AbstractCellInventory( final IStorageCell<T> cellType, final ItemStack o, final ISaveProvider container )
-	{
-		this.i = o;
-		this.cellType = cellType;
-		this.itemsPerByte = this.cellType.getChannel().getUnitsPerByte();
-		this.maxItemTypes = this.cellType.getTotalTypes( this.i );
+    protected final ISaveProvider container;
+    protected final IStorageCell<T> cellType;
+    protected final int itemsPerByte;
+    private final NBTTagCompound tagCompound;
+    private final ItemStack i;
+    protected IItemList<T> cellItems;
+    private int maxItemTypes = MAX_ITEM_TYPES;
+    private short storedItems = 0;
+    private int storedItemCount = 0;
+    private boolean isPersisted = true;
 
-		if( this.maxItemTypes > MAX_ITEM_TYPES )
-		{
-			this.maxItemTypes = MAX_ITEM_TYPES;
-		}
-		if( this.maxItemTypes < 1 )
-		{
-			this.maxItemTypes = 1;
-		}
+    protected AbstractCellInventory(final IStorageCell<T> cellType, final ItemStack o, final ISaveProvider container) {
+        this.i = o;
+        this.cellType = cellType;
+        this.itemsPerByte = this.cellType.getChannel().getUnitsPerByte();
+        this.maxItemTypes = this.cellType.getTotalTypes(this.i);
 
-		this.container = container;
-		this.tagCompound = Platform.openNbtData( o );
-		this.storedItems = this.tagCompound.getShort( ITEM_TYPE_TAG );
-		this.storedItemCount = this.tagCompound.getInteger( ITEM_COUNT_TAG );
-		this.cellItems = null;
-	}
+        if (this.maxItemTypes > MAX_ITEM_TYPES) {
+            this.maxItemTypes = MAX_ITEM_TYPES;
+        }
+        if (this.maxItemTypes < 1) {
+            this.maxItemTypes = 1;
+        }
 
-	protected IItemList<T> getCellItems()
-	{
-		if( this.cellItems == null )
-		{
-			this.cellItems = this.getChannel().createList();
-			this.loadCellItems();
-		}
+        this.container = container;
+        this.tagCompound = Platform.openNbtData(o);
+        this.storedItems = this.tagCompound.getShort(ITEM_TYPE_TAG);
+        this.storedItemCount = this.tagCompound.getInteger(ITEM_COUNT_TAG);
+        this.cellItems = null;
+    }
 
-		return this.cellItems;
-	}
+    protected IItemList<T> getCellItems() {
+        if (this.cellItems == null) {
+            this.cellItems = this.getChannel().createList();
+            this.loadCellItems();
+        }
 
-	@Override
-	public void persist()
-	{
-		if( this.isPersisted )
-		{
-			return;
-		}
+        return this.cellItems;
+    }
 
-		int itemCount = 0;
+    @Override
+    public void persist() {
+        if (this.isPersisted) {
+            return;
+        }
 
-		// add new pretty stuff...
-		int x = 0;
-		for( final T v : this.cellItems )
-		{
-			itemCount += v.getStackSize();
+        int itemCount = 0;
 
-			final NBTTagCompound g = new NBTTagCompound();
-			v.writeToNBT( g );
-			this.tagCompound.setTag( ITEM_SLOT_KEYS[x], g );
-			this.tagCompound.setInteger( ITEM_SLOT_COUNT_KEYS[x], (int) v.getStackSize() );
+        // add new pretty stuff...
+        int x = 0;
+        for (final T v : this.cellItems) {
+            itemCount += v.getStackSize();
 
-			x++;
-		}
+            final NBTTagCompound g = new NBTTagCompound();
+            v.writeToNBT(g);
+            this.tagCompound.setTag(ITEM_SLOT_KEYS[x], g);
+            this.tagCompound.setInteger(ITEM_SLOT_COUNT_KEYS[x], (int) v.getStackSize());
 
-		final short oldStoredItems = this.storedItems;
+            x++;
+        }
 
-		this.storedItems = (short) this.cellItems.size();
-		if( this.cellItems.isEmpty() )
-		{
-			this.tagCompound.removeTag( ITEM_TYPE_TAG );
-		}
-		else
-		{
-			this.tagCompound.setShort( ITEM_TYPE_TAG, this.storedItems );
-		}
+        final short oldStoredItems = this.storedItems;
 
-		this.storedItemCount = itemCount;
-		if( itemCount == 0 )
-		{
-			this.tagCompound.removeTag( ITEM_COUNT_TAG );
-		}
-		else
-		{
-			this.tagCompound.setInteger( ITEM_COUNT_TAG, itemCount );
-		}
+        this.storedItems = (short) this.cellItems.size();
+        if (this.cellItems.isEmpty()) {
+            this.tagCompound.removeTag(ITEM_TYPE_TAG);
+        } else {
+            this.tagCompound.setShort(ITEM_TYPE_TAG, this.storedItems);
+        }
 
-		// clean any old crusty stuff...
-		for( ; x < oldStoredItems && x < this.maxItemTypes; x++ )
-		{
-			this.tagCompound.removeTag( ITEM_SLOT_KEYS[x] );
-			this.tagCompound.removeTag( ITEM_SLOT_COUNT_KEYS[x] );
-		}
+        this.storedItemCount = itemCount;
+        if (itemCount == 0) {
+            this.tagCompound.removeTag(ITEM_COUNT_TAG);
+        } else {
+            this.tagCompound.setInteger(ITEM_COUNT_TAG, itemCount);
+        }
 
-		this.isPersisted = true;
-	}
+        // clean any old crusty stuff...
+        for (; x < oldStoredItems && x < this.maxItemTypes; x++) {
+            this.tagCompound.removeTag(ITEM_SLOT_KEYS[x]);
+            this.tagCompound.removeTag(ITEM_SLOT_COUNT_KEYS[x]);
+        }
 
-	protected void saveChanges()
-	{
-		// recalculate values
-		this.storedItems = (short) this.cellItems.size();
-		this.storedItemCount = 0;
-		for( final T v : this.cellItems )
-		{
-			this.storedItemCount += v.getStackSize();
-		}
+        this.isPersisted = true;
+    }
 
-		this.isPersisted = false;
-		if( this.container != null )
-		{
-			this.container.saveChanges( this );
-		}
-		else
-		{
-			// if there is no ISaveProvider, store to NBT immediately
-			this.persist();
-		}
-	}
+    protected void saveChanges() {
+        // recalculate values
+        this.storedItems = (short) this.cellItems.size();
+        this.storedItemCount = 0;
+        for (final T v : this.cellItems) {
+            this.storedItemCount += v.getStackSize();
+        }
 
-	private void loadCellItems()
-	{
-		if( this.cellItems == null )
-		{
-			this.cellItems = this.getChannel().createList();
-		}
+        this.isPersisted = false;
+        if (this.container != null) {
+            this.container.saveChanges(this);
+        } else {
+            // if there is no ISaveProvider, store to NBT immediately
+            this.persist();
+        }
+    }
 
-		this.cellItems.resetStatus(); // clears totals and stuff.
+    private void loadCellItems() {
+        if (this.cellItems == null) {
+            this.cellItems = this.getChannel().createList();
+        }
 
-		final int types = (int) this.getStoredItemTypes();
-		boolean needsUpdate = false;
+        this.cellItems.resetStatus(); // clears totals and stuff.
 
-		for( int slot = 0; slot < types; slot++ )
-		{
-			NBTTagCompound compoundTag = this.tagCompound.getCompoundTag( ITEM_SLOT_KEYS[slot] );
-			int stackSize = this.tagCompound.getInteger( ITEM_SLOT_COUNT_KEYS[slot] );
-			needsUpdate |= !this.loadCellItem( compoundTag, stackSize );
-		}
+        final int types = (int) this.getStoredItemTypes();
+        boolean needsUpdate = false;
 
-		if( needsUpdate )
-		{
-			this.saveChanges();
-		}
-	}
+        for (int slot = 0; slot < types; slot++) {
+            NBTTagCompound compoundTag = this.tagCompound.getCompoundTag(ITEM_SLOT_KEYS[slot]);
+            int stackSize = this.tagCompound.getInteger(ITEM_SLOT_COUNT_KEYS[slot]);
+            needsUpdate |= !this.loadCellItem(compoundTag, stackSize);
+        }
 
-	/**
-	 * Load a single item.
-	 *
-	 * @param compoundTag
-	 * @param stackSize
-	 * @return true when successfully loaded
-	 */
-	protected abstract boolean loadCellItem( NBTTagCompound compoundTag, int stackSize );
+        if (needsUpdate) {
+            this.saveChanges();
+        }
+    }
 
-	@Override
-	public IItemList<T> getAvailableItems( final IItemList<T> out )
-	{
-		for( final T item : this.getCellItems() )
-		{
-			out.add( item );
-		}
+    /**
+     * Load a single item.
+     *
+     * @param compoundTag
+     * @param stackSize
+     * @return true when successfully loaded
+     */
+    protected abstract boolean loadCellItem(NBTTagCompound compoundTag, int stackSize);
 
-		return out;
-	}
+    @Override
+    public IItemList<T> getAvailableItems(final IItemList<T> out) {
+        for (final T item : this.getCellItems()) {
+            out.add(item);
+        }
 
-	@Override
-	public ItemStack getItemStack()
-	{
-		return this.i;
-	}
+        return out;
+    }
 
-	@Override
-	public double getIdleDrain()
-	{
-		return this.cellType.getIdleDrain();
-	}
+    @Override
+    public ItemStack getItemStack() {
+        return this.i;
+    }
 
-	@Override
-	public FuzzyMode getFuzzyMode()
-	{
-		return this.cellType.getFuzzyMode( this.i );
-	}
+    @Override
+    public double getIdleDrain() {
+        return this.cellType.getIdleDrain();
+    }
 
-	@Override
-	public IItemHandler getConfigInventory()
-	{
-		return this.cellType.getConfigInventory( this.i );
-	}
+    @Override
+    public FuzzyMode getFuzzyMode() {
+        return this.cellType.getFuzzyMode(this.i);
+    }
 
-	@Override
-	public IItemHandler getUpgradesInventory()
-	{
-		return this.cellType.getUpgradesInventory( this.i );
-	}
+    @Override
+    public IItemHandler getConfigInventory() {
+        return this.cellType.getConfigInventory(this.i);
+    }
 
-	@Override
-	public int getBytesPerType()
-	{
-		return this.cellType.getBytesPerType( this.i );
-	}
+    @Override
+    public IItemHandler getUpgradesInventory() {
+        return this.cellType.getUpgradesInventory(this.i);
+    }
 
-	@Override
-	public boolean canHoldNewItem()
-	{
-		final long bytesFree = this.getFreeBytes();
-		return ( bytesFree > this.getBytesPerType() || ( bytesFree == this.getBytesPerType() && this.getUnusedItemCount() > 0 ) ) && this
-				.getRemainingItemTypes() > 0;
-	}
+    @Override
+    public int getBytesPerType() {
+        return this.cellType.getBytesPerType(this.i);
+    }
 
-	@Override
-	public long getTotalBytes()
-	{
-		return this.cellType.getBytes( this.i );
-	}
+    @Override
+    public boolean canHoldNewItem() {
+        final long bytesFree = this.getFreeBytes();
+        return (bytesFree > this.getBytesPerType() || (bytesFree == this.getBytesPerType() && this.getUnusedItemCount() > 0)) && this
+                .getRemainingItemTypes() > 0;
+    }
 
-	@Override
-	public long getFreeBytes()
-	{
-		return this.getTotalBytes() - this.getUsedBytes();
-	}
+    @Override
+    public long getTotalBytes() {
+        return this.cellType.getBytes(this.i);
+    }
 
-	@Override
-	public long getTotalItemTypes()
-	{
-		return this.maxItemTypes;
-	}
+    @Override
+    public long getFreeBytes() {
+        return this.getTotalBytes() - this.getUsedBytes();
+    }
 
-	@Override
-	public long getStoredItemCount()
-	{
-		return this.storedItemCount;
-	}
+    @Override
+    public long getTotalItemTypes() {
+        return this.maxItemTypes;
+    }
 
-	@Override
-	public long getStoredItemTypes()
-	{
-		return this.storedItems;
-	}
+    @Override
+    public long getStoredItemCount() {
+        return this.storedItemCount;
+    }
 
-	@Override
-	public long getRemainingItemTypes()
-	{
-		final long basedOnStorage = this.getFreeBytes() / this.getBytesPerType();
-		final long baseOnTotal = this.getTotalItemTypes() - this.getStoredItemTypes();
-		return basedOnStorage > baseOnTotal ? baseOnTotal : basedOnStorage;
-	}
+    @Override
+    public long getStoredItemTypes() {
+        return this.storedItems;
+    }
 
-	@Override
-	public long getUsedBytes()
-	{
-		final long bytesForItemCount = ( this.getStoredItemCount() + this.getUnusedItemCount() ) / this.itemsPerByte;
-		return this.getStoredItemTypes() * this.getBytesPerType() + bytesForItemCount;
-	}
+    @Override
+    public long getRemainingItemTypes() {
+        final long basedOnStorage = this.getFreeBytes() / this.getBytesPerType();
+        final long baseOnTotal = this.getTotalItemTypes() - this.getStoredItemTypes();
+        return basedOnStorage > baseOnTotal ? baseOnTotal : basedOnStorage;
+    }
 
-	@Override
-	public long getRemainingItemCount()
-	{
-		final long remaining = this.getFreeBytes() * this.itemsPerByte + this.getUnusedItemCount();
-		return remaining > 0 ? remaining : 0;
-	}
+    @Override
+    public long getUsedBytes() {
+        final long bytesForItemCount = (this.getStoredItemCount() + this.getUnusedItemCount()) / this.itemsPerByte;
+        return this.getStoredItemTypes() * this.getBytesPerType() + bytesForItemCount;
+    }
 
-	@Override
-	public int getUnusedItemCount()
-	{
-		final int div = (int) ( this.getStoredItemCount() % 8 );
+    @Override
+    public long getRemainingItemCount() {
+        final long remaining = this.getFreeBytes() * this.itemsPerByte + this.getUnusedItemCount();
+        return remaining > 0 ? remaining : 0;
+    }
 
-		if( div == 0 )
-		{
-			return 0;
-		}
+    @Override
+    public int getUnusedItemCount() {
+        final int div = (int) (this.getStoredItemCount() % 8);
 
-		return this.itemsPerByte - div;
-	}
+        if (div == 0) {
+            return 0;
+        }
 
-	@Override
-	public int getStatusForCell()
-	{
-		if( this.canHoldNewItem() )
-		{
-			return 1;
-		}
-		if( this.getRemainingItemCount() > 0 )
-		{
-			return 2;
-		}
-		return 3;
-	}
+        return this.itemsPerByte - div;
+    }
+
+    @Override
+    public int getStatusForCell() {
+        if (this.canHoldNewItem()) {
+            return 1;
+        }
+        if (this.getRemainingItemCount() > 0) {
+            return 2;
+        }
+        return 3;
+    }
 }

@@ -19,18 +19,6 @@
 package appeng.parts.p2p;
 
 
-import java.io.IOException;
-import java.util.List;
-
-import io.netty.buffer.ByteBuf;
-
-import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NBTTagCompound;
-import net.minecraft.tileentity.TileEntity;
-import net.minecraft.util.math.BlockPos;
-import net.minecraft.world.IBlockAccess;
-import net.minecraft.world.World;
-
 import appeng.api.networking.IGridNode;
 import appeng.api.networking.events.MENetworkChannelsChanged;
 import appeng.api.networking.events.MENetworkPowerStatusChange;
@@ -41,198 +29,169 @@ import appeng.api.parts.IPartModel;
 import appeng.core.settings.TickRates;
 import appeng.items.parts.PartModels;
 import appeng.me.GridAccessException;
+import io.netty.buffer.ByteBuf;
+import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.tileentity.TileEntity;
+import net.minecraft.util.math.BlockPos;
+import net.minecraft.world.IBlockAccess;
+import net.minecraft.world.World;
+
+import java.io.IOException;
+import java.util.List;
 
 
-public class PartP2PLight extends PartP2PTunnel<PartP2PLight> implements IGridTickable
-{
+public class PartP2PLight extends PartP2PTunnel<PartP2PLight> implements IGridTickable {
 
-	private static final P2PModels MODELS = new P2PModels( "part/p2p/p2p_tunnel_light" );
+    private static final P2PModels MODELS = new P2PModels("part/p2p/p2p_tunnel_light");
+    private int lastValue = 0;
+    private int opacity = -1;
+    public PartP2PLight(final ItemStack is) {
+        super(is);
+    }
 
-	@PartModels
-	public static List<IPartModel> getModels()
-	{
-		return MODELS.getModels();
-	}
+    @PartModels
+    public static List<IPartModel> getModels() {
+        return MODELS.getModels();
+    }
 
-	private int lastValue = 0;
-	private int opacity = -1;
+    @Override
+    public void chanRender(final MENetworkChannelsChanged c) {
+        this.onTunnelNetworkChange();
+        super.chanRender(c);
+    }
 
-	public PartP2PLight( final ItemStack is )
-	{
-		super( is );
-	}
+    @Override
+    public void powerRender(final MENetworkPowerStatusChange c) {
+        this.onTunnelNetworkChange();
+        super.powerRender(c);
+    }
 
-	@Override
-	public void chanRender( final MENetworkChannelsChanged c )
-	{
-		this.onTunnelNetworkChange();
-		super.chanRender( c );
-	}
+    @Override
+    public void writeToStream(final ByteBuf data) throws IOException {
+        super.writeToStream(data);
+        data.writeInt(this.isOutput() ? this.lastValue : 0);
+        data.writeInt(this.opacity);
+    }
 
-	@Override
-	public void powerRender( final MENetworkPowerStatusChange c )
-	{
-		this.onTunnelNetworkChange();
-		super.powerRender( c );
-	}
+    @Override
+    public boolean readFromStream(final ByteBuf data) throws IOException {
+        super.readFromStream(data);
+        final int oldValue = this.lastValue;
+        final int oldOpacity = this.opacity;
 
-	@Override
-	public void writeToStream( final ByteBuf data ) throws IOException
-	{
-		super.writeToStream( data );
-		data.writeInt( this.isOutput() ? this.lastValue : 0 );
-		data.writeInt( this.opacity );
-	}
+        this.lastValue = data.readInt();
+        this.opacity = data.readInt();
 
-	@Override
-	public boolean readFromStream( final ByteBuf data ) throws IOException
-	{
-		super.readFromStream( data );
-		final int oldValue = this.lastValue;
-		final int oldOpacity = this.opacity;
+        this.setOutput(this.lastValue > 0);
+        return this.lastValue != oldValue || oldOpacity != this.opacity;
+    }
 
-		this.lastValue = data.readInt();
-		this.opacity = data.readInt();
+    private boolean doWork() {
+        if (this.isOutput()) {
+            return false;
+        }
 
-		this.setOutput( this.lastValue > 0 );
-		return this.lastValue != oldValue || oldOpacity != this.opacity;
-	}
+        final TileEntity te = this.getTile();
+        final World w = te.getWorld();
 
-	private boolean doWork()
-	{
-		if( this.isOutput() )
-		{
-			return false;
-		}
+        final int newLevel = w.getLightFromNeighbors(te.getPos().offset(this.getSide().getFacing()));
 
-		final TileEntity te = this.getTile();
-		final World w = te.getWorld();
+        if (this.lastValue != newLevel && this.getProxy().isActive()) {
+            this.lastValue = newLevel;
+            try {
+                for (final PartP2PLight out : this.getOutputs()) {
+                    out.setLightLevel(this.lastValue);
+                }
+            } catch (final GridAccessException e) {
+                // :P
+            }
+            return true;
+        }
+        return false;
+    }
 
-		final int newLevel = w.getLightFromNeighbors( te.getPos().offset( this.getSide().getFacing() ) );
+    @Override
+    public void onNeighborChanged(IBlockAccess w, BlockPos pos, BlockPos neighbor) {
+        if (this.isOutput() && pos.offset(this.getSide().getFacing()).equals(neighbor)) {
+            this.opacity = -1;
+            this.getHost().markForUpdate();
+        } else {
+            this.doWork();
+        }
+    }
 
-		if( this.lastValue != newLevel && this.getProxy().isActive() )
-		{
-			this.lastValue = newLevel;
-			try
-			{
-				for( final PartP2PLight out : this.getOutputs() )
-				{
-					out.setLightLevel( this.lastValue );
-				}
-			}
-			catch( final GridAccessException e )
-			{
-				// :P
-			}
-			return true;
-		}
-		return false;
-	}
+    @Override
+    public int getLightLevel() {
+        if (this.isOutput() && this.isPowered()) {
+            return this.blockLight(this.lastValue);
+        }
 
-	@Override
-	public void onNeighborChanged( IBlockAccess w, BlockPos pos, BlockPos neighbor )
-	{
-		if( this.isOutput() && pos.offset( this.getSide().getFacing() ).equals( neighbor ) )
-		{
-			this.opacity = -1;
-			this.getHost().markForUpdate();
-		}
-		else
-		{
-			this.doWork();
-		}
-	}
+        return 0;
+    }
 
-	@Override
-	public int getLightLevel()
-	{
-		if( this.isOutput() && this.isPowered() )
-		{
-			return this.blockLight( this.lastValue );
-		}
+    private void setLightLevel(final int out) {
+        this.lastValue = out;
+        this.getHost().markForUpdate();
+    }
 
-		return 0;
-	}
+    private int blockLight(final int emit) {
+        if (this.opacity < 0) {
+            final TileEntity te = this.getTile();
+            this.opacity = 255 - te.getWorld().getBlockLightOpacity(te.getPos().offset(this.getSide().getFacing()));
+        }
 
-	private void setLightLevel( final int out )
-	{
-		this.lastValue = out;
-		this.getHost().markForUpdate();
-	}
+        return (int) (emit * (this.opacity / 255.0f));
+    }
 
-	private int blockLight( final int emit )
-	{
-		if( this.opacity < 0 )
-		{
-			final TileEntity te = this.getTile();
-			this.opacity = 255 - te.getWorld().getBlockLightOpacity( te.getPos().offset( this.getSide().getFacing() ) );
-		}
+    @Override
+    public void readFromNBT(final NBTTagCompound tag) {
+        super.readFromNBT(tag);
+        this.lastValue = tag.getInteger("lastValue");
+    }
 
-		return (int) ( emit * ( this.opacity / 255.0f ) );
-	}
+    @Override
+    public void writeToNBT(final NBTTagCompound tag) {
+        super.writeToNBT(tag);
+        tag.setInteger("lastValue", this.lastValue);
+    }
 
-	@Override
-	public void readFromNBT( final NBTTagCompound tag )
-	{
-		super.readFromNBT( tag );
-		this.lastValue = tag.getInteger( "lastValue" );
-	}
+    @Override
+    public void onTunnelConfigChange() {
+        this.onTunnelNetworkChange();
+    }
 
-	@Override
-	public void writeToNBT( final NBTTagCompound tag )
-	{
-		super.writeToNBT( tag );
-		tag.setInteger( "lastValue", this.lastValue );
-	}
+    @Override
+    public void onTunnelNetworkChange() {
+        if (this.isOutput()) {
+            final PartP2PLight src = this.getInput();
+            if (src != null && src.getProxy().isActive()) {
+                this.setLightLevel(src.lastValue);
+            } else {
+                this.getHost().markForUpdate();
+            }
+        } else {
+            this.doWork();
+        }
+    }
 
-	@Override
-	public void onTunnelConfigChange()
-	{
-		this.onTunnelNetworkChange();
-	}
+    @Override
+    public TickingRequest getTickingRequest(final IGridNode node) {
+        return new TickingRequest(TickRates.LightTunnel.getMin(), TickRates.LightTunnel.getMax(), false, false);
+    }
 
-	@Override
-	public void onTunnelNetworkChange()
-	{
-		if( this.isOutput() )
-		{
-			final PartP2PLight src = this.getInput();
-			if( src != null && src.getProxy().isActive() )
-			{
-				this.setLightLevel( src.lastValue );
-			}
-			else
-			{
-				this.getHost().markForUpdate();
-			}
-		}
-		else
-		{
-			this.doWork();
-		}
-	}
+    @Override
+    public TickRateModulation tickingRequest(final IGridNode node, final int ticksSinceLastCall) {
+        return this.doWork() ? TickRateModulation.URGENT : TickRateModulation.SLOWER;
+    }
 
-	@Override
-	public TickingRequest getTickingRequest( final IGridNode node )
-	{
-		return new TickingRequest( TickRates.LightTunnel.getMin(), TickRates.LightTunnel.getMax(), false, false );
-	}
+    public float getPowerDrainPerTick() {
+        return 0.5f;
+    }
 
-	@Override
-	public TickRateModulation tickingRequest( final IGridNode node, final int ticksSinceLastCall )
-	{
-		return this.doWork() ? TickRateModulation.URGENT : TickRateModulation.SLOWER;
-	}
-
-	public float getPowerDrainPerTick()
-	{
-		return 0.5f;
-	}
-
-	@Override
-	public IPartModel getStaticModels()
-	{
-		return MODELS.getModel( this.isPowered(), this.isActive() );
-	}
+    @Override
+    public IPartModel getStaticModels() {
+        return MODELS.getModel(this.isPowered(), this.isActive());
+    }
 
 }

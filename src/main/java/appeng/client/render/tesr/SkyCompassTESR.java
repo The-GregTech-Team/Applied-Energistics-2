@@ -19,6 +19,10 @@
 package appeng.client.render.tesr;
 
 
+import appeng.block.AEBaseTileBlock;
+import appeng.block.misc.BlockSkyCompass;
+import appeng.client.render.model.SkyCompassBakedModel;
+import appeng.tile.misc.TileSkyCompass;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.BlockRendererDispatcher;
@@ -34,90 +38,72 @@ import net.minecraftforge.common.property.Properties;
 import net.minecraftforge.fml.relauncher.Side;
 import net.minecraftforge.fml.relauncher.SideOnly;
 
-import appeng.block.AEBaseTileBlock;
-import appeng.block.misc.BlockSkyCompass;
-import appeng.client.render.model.SkyCompassBakedModel;
-import appeng.tile.misc.TileSkyCompass;
 
+@SideOnly(Side.CLIENT)
+public class SkyCompassTESR extends FastTESR<TileSkyCompass> {
 
-@SideOnly( Side.CLIENT )
-public class SkyCompassTESR extends FastTESR<TileSkyCompass>
-{
+    private static BlockRendererDispatcher blockRenderer;
 
-	private static BlockRendererDispatcher blockRenderer;
+    private static float getRotation(TileSkyCompass skyCompass) {
+        float rotation;
 
-	@Override
-	public void renderTileEntityFast( TileSkyCompass te, double x, double y, double z, float partialTicks, int destroyStage, float var10, BufferBuilder buffer )
-	{
+        if (skyCompass.getForward() == EnumFacing.UP || skyCompass.getForward() == EnumFacing.DOWN) {
+            rotation = SkyCompassBakedModel.getAnimatedRotation(skyCompass.getPos(), false);
+        } else {
+            rotation = SkyCompassBakedModel.getAnimatedRotation(null, false);
+        }
 
-		if( !te.hasWorld() )
-		{
-			return;
-		}
+        if (skyCompass.getForward() == EnumFacing.DOWN) {
+            rotation = flipidiy(rotation);
+        }
 
-		if( blockRenderer == null )
-		{
-			blockRenderer = Minecraft.getMinecraft().getBlockRendererDispatcher();
-		}
+        return rotation;
+    }
 
-		BlockPos pos = te.getPos();
-		IBlockAccess world = MinecraftForgeClient.getRegionRenderCache( te.getWorld(), pos );
-		IBlockState state = world.getBlockState( pos );
-		if( state.getPropertyKeys().contains( Properties.StaticProperty ) )
-		{
-			state = state.withProperty( Properties.StaticProperty, false );
-		}
+    private static float flipidiy(float rad) {
+        float x = (float) Math.cos(rad);
+        float y = (float) Math.sin(rad);
+        return (float) Math.atan2(-y, x);
+    }
 
-		if( state instanceof IExtendedBlockState )
-		{
-			IExtendedBlockState exState = (IExtendedBlockState) state.getBlock().getExtendedState( state, world, pos );
+    @Override
+    public void renderTileEntityFast(TileSkyCompass te, double x, double y, double z, float partialTicks, int destroyStage, float var10, BufferBuilder buffer) {
 
-			IBakedModel model = blockRenderer.getBlockModelShapes().getModelForState( exState.getClean() );
-			exState = exState.withProperty( BlockSkyCompass.ROTATION, getRotation( te ) );
+        if (!te.hasWorld()) {
+            return;
+        }
 
-			// Flip forward/up for rendering, the base model is facing up without any rotation
-			EnumFacing forward = exState.getValue( AEBaseTileBlock.FORWARD );
-			EnumFacing up = exState.getValue( AEBaseTileBlock.UP );
-			// This ensures the needle isn't flipped by the model rotator. Since the model is symmetrical, this should
-			// not affect the appearance
-			if( forward == EnumFacing.UP || forward == EnumFacing.DOWN )
-			{
-				up = EnumFacing.NORTH;
-			}
-			exState = exState.withProperty( AEBaseTileBlock.FORWARD, up )
-					.withProperty( AEBaseTileBlock.UP, forward );
+        if (blockRenderer == null) {
+            blockRenderer = Minecraft.getMinecraft().getBlockRendererDispatcher();
+        }
 
-			buffer.setTranslation( x - pos.getX(), y - pos.getY(), z - pos.getZ() );
+        BlockPos pos = te.getPos();
+        IBlockAccess world = MinecraftForgeClient.getRegionRenderCache(te.getWorld(), pos);
+        IBlockState state = world.getBlockState(pos);
+        if (state.getPropertyKeys().contains(Properties.StaticProperty)) {
+            state = state.withProperty(Properties.StaticProperty, false);
+        }
 
-			blockRenderer.getBlockModelRenderer().renderModel( world, model, exState, pos, buffer, false );
-		}
-	}
+        if (state instanceof IExtendedBlockState) {
+            IExtendedBlockState exState = (IExtendedBlockState) state.getBlock().getExtendedState(state, world, pos);
 
-	private static float getRotation( TileSkyCompass skyCompass )
-	{
-		float rotation;
+            IBakedModel model = blockRenderer.getBlockModelShapes().getModelForState(exState.getClean());
+            exState = exState.withProperty(BlockSkyCompass.ROTATION, getRotation(te));
 
-		if( skyCompass.getForward() == EnumFacing.UP || skyCompass.getForward() == EnumFacing.DOWN )
-		{
-			rotation = SkyCompassBakedModel.getAnimatedRotation( skyCompass.getPos(), false );
-		}
-		else
-		{
-			rotation = SkyCompassBakedModel.getAnimatedRotation( null, false );
-		}
+            // Flip forward/up for rendering, the base model is facing up without any rotation
+            EnumFacing forward = exState.getValue(AEBaseTileBlock.FORWARD);
+            EnumFacing up = exState.getValue(AEBaseTileBlock.UP);
+            // This ensures the needle isn't flipped by the model rotator. Since the model is symmetrical, this should
+            // not affect the appearance
+            if (forward == EnumFacing.UP || forward == EnumFacing.DOWN) {
+                up = EnumFacing.NORTH;
+            }
+            exState = exState.withProperty(AEBaseTileBlock.FORWARD, up)
+                    .withProperty(AEBaseTileBlock.UP, forward);
 
-		if( skyCompass.getForward() == EnumFacing.DOWN )
-		{
-			rotation = flipidiy( rotation );
-		}
+            buffer.setTranslation(x - pos.getX(), y - pos.getY(), z - pos.getZ());
 
-		return rotation;
-	}
-
-	private static float flipidiy( float rad )
-	{
-		float x = (float) Math.cos( rad );
-		float y = (float) Math.sin( rad );
-		return (float) Math.atan2( -y, x );
-	}
+            blockRenderer.getBlockModelRenderer().renderModel(world, model, exState, pos, buffer, false);
+        }
+    }
 }

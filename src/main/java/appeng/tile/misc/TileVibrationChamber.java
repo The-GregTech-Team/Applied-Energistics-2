@@ -19,19 +19,6 @@
 package appeng.tile.misc;
 
 
-import java.io.IOException;
-
-import javax.annotation.Nonnull;
-
-import io.netty.buffer.ByteBuf;
-
-import net.minecraft.item.Item;
-import net.minecraft.item.ItemStack;
-import net.minecraft.nbt.NBTTagCompound;
-import net.minecraft.tileentity.TileEntityFurnace;
-import net.minecraft.util.EnumFacing;
-import net.minecraftforge.items.IItemHandler;
-
 import appeng.api.config.Actionable;
 import appeng.api.networking.IGridNode;
 import appeng.api.networking.energy.IEnergyGrid;
@@ -49,284 +36,238 @@ import appeng.util.Platform;
 import appeng.util.inv.InvOperation;
 import appeng.util.inv.WrapperFilteredItemHandler;
 import appeng.util.inv.filter.IAEItemFilter;
+import io.netty.buffer.ByteBuf;
+import net.minecraft.item.Item;
+import net.minecraft.item.ItemStack;
+import net.minecraft.nbt.NBTTagCompound;
+import net.minecraft.tileentity.TileEntityFurnace;
+import net.minecraft.util.EnumFacing;
+import net.minecraftforge.items.IItemHandler;
+
+import javax.annotation.Nonnull;
+import java.io.IOException;
 
 
-public class TileVibrationChamber extends AENetworkInvTile implements IGridTickable
-{
-	public static final double POWER_PER_TICK = 5;
-	public static final int MIN_BURN_SPEED = 20;
-	public static final int MAX_BURN_SPEED = 200;
-	public static final double DILATION_SCALING = 25.0; // x4 ~ 40 AE/t at max
-	private final AppEngInternalInventory inv = new AppEngInternalInventory( this, 1 );
-	private final IItemHandler invExt = new WrapperFilteredItemHandler( this.inv, new FuelSlotFilter() );
+public class TileVibrationChamber extends AENetworkInvTile implements IGridTickable {
+    public static final double POWER_PER_TICK = 5;
+    public static final int MIN_BURN_SPEED = 20;
+    public static final int MAX_BURN_SPEED = 200;
+    public static final double DILATION_SCALING = 25.0; // x4 ~ 40 AE/t at max
+    private final AppEngInternalInventory inv = new AppEngInternalInventory(this, 1);
+    private final IItemHandler invExt = new WrapperFilteredItemHandler(this.inv, new FuelSlotFilter());
+    // client side..
+    public boolean isOn;
+    private int burnSpeed = 100;
+    private double burnTime = 0;
+    private double maxBurnTime = 0;
 
-	private int burnSpeed = 100;
-	private double burnTime = 0;
-	private double maxBurnTime = 0;
+    public TileVibrationChamber() {
+        this.getProxy().setIdlePowerUsage(0);
+        this.getProxy().setFlags();
+    }
 
-	// client side..
-	public boolean isOn;
+    @Override
+    public AECableType getCableConnectionType(final AEPartLocation dir) {
+        return AECableType.COVERED;
+    }
 
-	public TileVibrationChamber()
-	{
-		this.getProxy().setIdlePowerUsage( 0 );
-		this.getProxy().setFlags();
-	}
+    @Override
+    protected boolean readFromStream(final ByteBuf data) throws IOException {
+        final boolean c = super.readFromStream(data);
+        final boolean wasOn = this.isOn;
 
-	@Override
-	public AECableType getCableConnectionType( final AEPartLocation dir )
-	{
-		return AECableType.COVERED;
-	}
+        this.isOn = data.readBoolean();
 
-	@Override
-	protected boolean readFromStream( final ByteBuf data ) throws IOException
-	{
-		final boolean c = super.readFromStream( data );
-		final boolean wasOn = this.isOn;
+        return wasOn != this.isOn || c; // TESR doesn't need updates!
+    }
 
-		this.isOn = data.readBoolean();
+    @Override
+    protected void writeToStream(final ByteBuf data) throws IOException {
+        super.writeToStream(data);
+        data.writeBoolean(this.getBurnTime() > 0);
+    }
 
-		return wasOn != this.isOn || c; // TESR doesn't need updates!
-	}
+    @Override
+    public NBTTagCompound writeToNBT(final NBTTagCompound data) {
+        super.writeToNBT(data);
+        data.setDouble("burnTime", this.getBurnTime());
+        data.setDouble("maxBurnTime", this.getMaxBurnTime());
+        data.setInteger("burnSpeed", this.getBurnSpeed());
+        return data;
+    }
 
-	@Override
-	protected void writeToStream( final ByteBuf data ) throws IOException
-	{
-		super.writeToStream( data );
-		data.writeBoolean( this.getBurnTime() > 0 );
-	}
+    @Override
+    public void readFromNBT(final NBTTagCompound data) {
+        super.readFromNBT(data);
+        this.setBurnTime(data.getDouble("burnTime"));
+        this.setMaxBurnTime(data.getDouble("maxBurnTime"));
+        this.setBurnSpeed(data.getInteger("burnSpeed"));
+    }
 
-	@Override
-	public NBTTagCompound writeToNBT( final NBTTagCompound data )
-	{
-		super.writeToNBT( data );
-		data.setDouble( "burnTime", this.getBurnTime() );
-		data.setDouble( "maxBurnTime", this.getMaxBurnTime() );
-		data.setInteger( "burnSpeed", this.getBurnSpeed() );
-		return data;
-	}
+    @Override
+    protected IItemHandler getItemHandlerForSide(@Nonnull EnumFacing facing) {
+        return this.invExt;
+    }
 
-	@Override
-	public void readFromNBT( final NBTTagCompound data )
-	{
-		super.readFromNBT( data );
-		this.setBurnTime( data.getDouble( "burnTime" ) );
-		this.setMaxBurnTime( data.getDouble( "maxBurnTime" ) );
-		this.setBurnSpeed( data.getInteger( "burnSpeed" ) );
-	}
+    @Override
+    public IItemHandler getInternalInventory() {
+        return this.inv;
+    }
 
-	@Override
-	protected IItemHandler getItemHandlerForSide( @Nonnull EnumFacing facing )
-	{
-		return this.invExt;
-	}
+    @Override
+    public void onChangeInventory(final IItemHandler inv, final int slot, final InvOperation mc, final ItemStack removed, final ItemStack added) {
+        if (this.getBurnTime() <= 0) {
+            if (this.canEatFuel()) {
+                try {
+                    this.getProxy().getTick().wakeDevice(this.getProxy().getNode());
+                } catch (final GridAccessException e) {
+                    // wake up!
+                }
+            }
+        }
+    }
 
-	@Override
-	public IItemHandler getInternalInventory()
-	{
-		return this.inv;
-	}
+    private boolean canEatFuel() {
+        final ItemStack is = this.inv.getStackInSlot(0);
+        if (!is.isEmpty()) {
+            final int newBurnTime = TileEntityFurnace.getItemBurnTime(is);
+            return newBurnTime > 0 && is.getCount() > 0;
+        }
+        return false;
+    }
 
-	@Override
-	public void onChangeInventory( final IItemHandler inv, final int slot, final InvOperation mc, final ItemStack removed, final ItemStack added )
-	{
-		if( this.getBurnTime() <= 0 )
-		{
-			if( this.canEatFuel() )
-			{
-				try
-				{
-					this.getProxy().getTick().wakeDevice( this.getProxy().getNode() );
-				}
-				catch( final GridAccessException e )
-				{
-					// wake up!
-				}
-			}
-		}
-	}
+    @Override
+    public DimensionalCoord getLocation() {
+        return new DimensionalCoord(this);
+    }
 
-	private boolean canEatFuel()
-	{
-		final ItemStack is = this.inv.getStackInSlot( 0 );
-		if( !is.isEmpty() )
-		{
-			final int newBurnTime = TileEntityFurnace.getItemBurnTime( is );
-			if( newBurnTime > 0 && is.getCount() > 0 )
-			{
-				return true;
-			}
-		}
-		return false;
-	}
+    @Override
+    public TickingRequest getTickingRequest(final IGridNode node) {
+        if (this.getBurnTime() <= 0) {
+            this.eatFuel();
+        }
 
-	@Override
-	public DimensionalCoord getLocation()
-	{
-		return new DimensionalCoord( this );
-	}
+        return new TickingRequest(TickRates.VibrationChamber.getMin(), TickRates.VibrationChamber.getMax(), this.getBurnTime() <= 0, false);
+    }
 
-	@Override
-	public TickingRequest getTickingRequest( final IGridNode node )
-	{
-		if( this.getBurnTime() <= 0 )
-		{
-			this.eatFuel();
-		}
+    @Override
+    public TickRateModulation tickingRequest(final IGridNode node, final int ticksSinceLastCall) {
+        if (this.getBurnTime() <= 0) {
+            this.eatFuel();
 
-		return new TickingRequest( TickRates.VibrationChamber.getMin(), TickRates.VibrationChamber.getMax(), this.getBurnTime() <= 0, false );
-	}
+            if (this.getBurnTime() > 0) {
+                return TickRateModulation.URGENT;
+            }
 
-	@Override
-	public TickRateModulation tickingRequest( final IGridNode node, final int ticksSinceLastCall )
-	{
-		if( this.getBurnTime() <= 0 )
-		{
-			this.eatFuel();
+            this.setBurnSpeed(100);
+            return TickRateModulation.SLEEP;
+        }
 
-			if( this.getBurnTime() > 0 )
-			{
-				return TickRateModulation.URGENT;
-			}
+        this.setBurnSpeed(Math.max(MIN_BURN_SPEED, Math.min(this.getBurnSpeed(), MAX_BURN_SPEED)));
+        final double dilation = this.getBurnSpeed() / DILATION_SCALING;
 
-			this.setBurnSpeed( 100 );
-			return TickRateModulation.SLEEP;
-		}
+        double timePassed = ticksSinceLastCall * dilation;
+        this.setBurnTime(this.getBurnTime() - timePassed);
+        if (this.getBurnTime() < 0) {
+            timePassed += this.getBurnTime();
+            this.setBurnTime(0);
+        }
 
-		this.setBurnSpeed( Math.max( MIN_BURN_SPEED, Math.min( this.getBurnSpeed(), MAX_BURN_SPEED ) ) );
-		final double dilation = this.getBurnSpeed() / DILATION_SCALING;
+        try {
+            final IEnergyGrid grid = this.getProxy().getEnergy();
+            final double newPower = timePassed * POWER_PER_TICK;
+            final double overFlow = grid.injectPower(newPower, Actionable.SIMULATE);
 
-		double timePassed = ticksSinceLastCall * dilation;
-		this.setBurnTime( this.getBurnTime() - timePassed );
-		if( this.getBurnTime() < 0 )
-		{
-			timePassed += this.getBurnTime();
-			this.setBurnTime( 0 );
-		}
+            // burn the over flow.
+            grid.injectPower(Math.max(0.0, newPower - overFlow), Actionable.MODULATE);
 
-		try
-		{
-			final IEnergyGrid grid = this.getProxy().getEnergy();
-			final double newPower = timePassed * POWER_PER_TICK;
-			final double overFlow = grid.injectPower( newPower, Actionable.SIMULATE );
+            if (overFlow > 0) {
+                this.setBurnSpeed(this.getBurnSpeed() - ticksSinceLastCall);
+            } else {
+                this.setBurnSpeed(this.getBurnSpeed() + ticksSinceLastCall);
+            }
 
-			// burn the over flow.
-			grid.injectPower( Math.max( 0.0, newPower - overFlow ), Actionable.MODULATE );
+            this.setBurnSpeed(Math.max(MIN_BURN_SPEED, Math.min(this.getBurnSpeed(), MAX_BURN_SPEED)));
+            return overFlow > 0 ? TickRateModulation.SLOWER : TickRateModulation.FASTER;
+        } catch (final GridAccessException e) {
+            this.setBurnSpeed(this.getBurnSpeed() - ticksSinceLastCall);
+            this.setBurnSpeed(Math.max(MIN_BURN_SPEED, Math.min(this.getBurnSpeed(), MAX_BURN_SPEED)));
+            return TickRateModulation.SLOWER;
+        }
+    }
 
-			if( overFlow > 0 )
-			{
-				this.setBurnSpeed( this.getBurnSpeed() - ticksSinceLastCall );
-			}
-			else
-			{
-				this.setBurnSpeed( this.getBurnSpeed() + ticksSinceLastCall );
-			}
+    private void eatFuel() {
+        final ItemStack is = this.inv.getStackInSlot(0);
+        if (!is.isEmpty()) {
+            final int newBurnTime = TileEntityFurnace.getItemBurnTime(is);
+            if (newBurnTime > 0 && is.getCount() > 0) {
+                this.setBurnTime(this.getBurnTime() + newBurnTime);
+                this.setMaxBurnTime(this.getBurnTime());
 
-			this.setBurnSpeed( Math.max( MIN_BURN_SPEED, Math.min( this.getBurnSpeed(), MAX_BURN_SPEED ) ) );
-			return overFlow > 0 ? TickRateModulation.SLOWER : TickRateModulation.FASTER;
-		}
-		catch( final GridAccessException e )
-		{
-			this.setBurnSpeed( this.getBurnSpeed() - ticksSinceLastCall );
-			this.setBurnSpeed( Math.max( MIN_BURN_SPEED, Math.min( this.getBurnSpeed(), MAX_BURN_SPEED ) ) );
-			return TickRateModulation.SLOWER;
-		}
-	}
+                final Item fuelItem = is.getItem();
+                is.shrink(1);
 
-	private void eatFuel()
-	{
-		final ItemStack is = this.inv.getStackInSlot( 0 );
-		if( !is.isEmpty() )
-		{
-			final int newBurnTime = TileEntityFurnace.getItemBurnTime( is );
-			if( newBurnTime > 0 && is.getCount() > 0 )
-			{
-				this.setBurnTime( this.getBurnTime() + newBurnTime );
-				this.setMaxBurnTime( this.getBurnTime() );
+                if (is.isEmpty()) {
+                    this.inv.setStackInSlot(0, fuelItem.getContainerItem(is));
+                } else {
+                    this.inv.setStackInSlot(0, is);
+                }
+                this.saveChanges();
+            }
+        }
 
-				final Item fuelItem = is.getItem();
-				is.shrink( 1 );
+        if (this.getBurnTime() > 0) {
+            try {
+                this.getProxy().getTick().wakeDevice(this.getProxy().getNode());
+            } catch (final GridAccessException e) {
+                // gah!
+            }
+        }
 
-				if( is.isEmpty() )
-				{
-					this.inv.setStackInSlot( 0, fuelItem.getContainerItem( is ) );
-				}
-				else
-				{
-					this.inv.setStackInSlot( 0, is );
-				}
-				this.saveChanges();
-			}
-		}
+        // state change
+        if ((!this.isOn && this.getBurnTime() > 0) || (this.isOn && this.getBurnTime() <= 0)) {
+            this.isOn = this.getBurnTime() > 0;
+            this.markForUpdate();
 
-		if( this.getBurnTime() > 0 )
-		{
-			try
-			{
-				this.getProxy().getTick().wakeDevice( this.getProxy().getNode() );
-			}
-			catch( final GridAccessException e )
-			{
-				// gah!
-			}
-		}
+            if (this.hasWorld()) {
+                Platform.notifyBlocksOfNeighbors(this.world, this.pos);
+            }
+        }
+    }
 
-		// state change
-		if( ( !this.isOn && this.getBurnTime() > 0 ) || ( this.isOn && this.getBurnTime() <= 0 ) )
-		{
-			this.isOn = this.getBurnTime() > 0;
-			this.markForUpdate();
+    public int getBurnSpeed() {
+        return this.burnSpeed;
+    }
 
-			if( this.hasWorld() )
-			{
-				Platform.notifyBlocksOfNeighbors( this.world, this.pos );
-			}
-		}
-	}
+    private void setBurnSpeed(final int burnSpeed) {
+        this.burnSpeed = burnSpeed;
+    }
 
-	public int getBurnSpeed()
-	{
-		return this.burnSpeed;
-	}
+    public double getMaxBurnTime() {
+        return this.maxBurnTime;
+    }
 
-	private void setBurnSpeed( final int burnSpeed )
-	{
-		this.burnSpeed = burnSpeed;
-	}
+    private void setMaxBurnTime(final double maxBurnTime) {
+        this.maxBurnTime = maxBurnTime;
+    }
 
-	public double getMaxBurnTime()
-	{
-		return this.maxBurnTime;
-	}
+    public double getBurnTime() {
+        return this.burnTime;
+    }
 
-	private void setMaxBurnTime( final double maxBurnTime )
-	{
-		this.maxBurnTime = maxBurnTime;
-	}
+    private void setBurnTime(final double burnTime) {
+        this.burnTime = burnTime;
+    }
 
-	public double getBurnTime()
-	{
-		return this.burnTime;
-	}
+    private class FuelSlotFilter implements IAEItemFilter {
+        @Override
+        public boolean allowExtract(IItemHandler inv, int slot, int amount) {
+            return !TileEntityFurnace.isItemFuel(inv.getStackInSlot(slot));
+        }
 
-	private void setBurnTime( final double burnTime )
-	{
-		this.burnTime = burnTime;
-	}
-
-	private class FuelSlotFilter implements IAEItemFilter
-	{
-		@Override
-		public boolean allowExtract( IItemHandler inv, int slot, int amount )
-		{
-			return !TileEntityFurnace.isItemFuel( inv.getStackInSlot( slot ) );
-		}
-
-		@Override
-		public boolean allowInsert( IItemHandler inv, int slot, ItemStack stack )
-		{
-			return TileEntityFurnace.isItemFuel( stack );
-		}
-	}
+        @Override
+        public boolean allowInsert(IItemHandler inv, int slot, ItemStack stack) {
+            return TileEntityFurnace.isItemFuel(stack);
+        }
+    }
 }

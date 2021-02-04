@@ -19,9 +19,13 @@
 package appeng.block.networking;
 
 
-import java.util.Collections;
-import java.util.List;
-
+import appeng.api.util.AEPartLocation;
+import appeng.block.AEBaseTileBlock;
+import appeng.core.sync.GuiBridge;
+import appeng.helpers.AEGlassMaterial;
+import appeng.helpers.ICustomCollision;
+import appeng.tile.networking.TileWireless;
+import appeng.util.Platform;
 import net.minecraft.block.properties.IProperty;
 import net.minecraft.block.properties.PropertyEnum;
 import net.minecraft.block.state.IBlockState;
@@ -36,224 +40,196 @@ import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.IBlockAccess;
 import net.minecraft.world.World;
 
-import appeng.api.util.AEPartLocation;
-import appeng.block.AEBaseTileBlock;
-import appeng.core.sync.GuiBridge;
-import appeng.helpers.AEGlassMaterial;
-import appeng.helpers.ICustomCollision;
-import appeng.tile.networking.TileWireless;
-import appeng.util.Platform;
+import java.util.Collections;
+import java.util.List;
 
 
-public class BlockWireless extends AEBaseTileBlock implements ICustomCollision
-{
+public class BlockWireless extends AEBaseTileBlock implements ICustomCollision {
 
-	enum State implements IStringSerializable
-	{
-		OFF,
-		ON,
-		HAS_CHANNEL;
+    public static final PropertyEnum<State> STATE = PropertyEnum.create("state", State.class);
 
-		@Override
-		public String getName()
-		{
-			return this.name().toLowerCase();
-		}
-	}
+    public BlockWireless() {
+        super(AEGlassMaterial.INSTANCE);
+        this.setLightOpacity(0);
+        this.setFullSize(false);
+        this.setOpaque(false);
+        this.setDefaultState(this.getDefaultState().withProperty(STATE, State.OFF));
+    }
 
-	public static final PropertyEnum<State> STATE = PropertyEnum.create( "state", State.class );
+    @Override
+    public BlockRenderLayer getBlockLayer() {
+        return BlockRenderLayer.CUTOUT;
+    }
 
-	public BlockWireless()
-	{
-		super( AEGlassMaterial.INSTANCE );
-		this.setLightOpacity( 0 );
-		this.setFullSize( false );
-		this.setOpaque( false );
-		this.setDefaultState( this.getDefaultState().withProperty( STATE, State.OFF ) );
-	}
+    @Override
+    public IBlockState getActualState(IBlockState state, IBlockAccess worldIn, BlockPos pos) {
+        State teState = State.OFF;
 
-	@Override
-	public BlockRenderLayer getBlockLayer()
-	{
-		return BlockRenderLayer.CUTOUT;
-	}
+        TileWireless te = this.getTileEntity(worldIn, pos);
+        if (te != null) {
+            if (te.isActive()) {
+                teState = State.HAS_CHANNEL;
+            } else if (te.isPowered()) {
+                teState = State.ON;
+            }
+        }
 
-	@Override
-	public IBlockState getActualState( IBlockState state, IBlockAccess worldIn, BlockPos pos )
-	{
-		State teState = State.OFF;
+        return super.getActualState(state, worldIn, pos)
+                .withProperty(STATE, teState);
+    }
 
-		TileWireless te = this.getTileEntity( worldIn, pos );
-		if( te != null )
-		{
-			if( te.isActive() )
-			{
-				teState = State.HAS_CHANNEL;
-			}
-			else if( te.isPowered() )
-			{
-				teState = State.ON;
-			}
-		}
+    @Override
+    protected IProperty[] getAEStates() {
+        return new IProperty[]{STATE};
+    }
 
-		return super.getActualState( state, worldIn, pos )
-				.withProperty( STATE, teState );
-	}
+    @Override
+    public boolean onBlockActivated(final World w, final BlockPos pos, final IBlockState state, final EntityPlayer player, final EnumHand hand, final EnumFacing side, final float hitX, final float hitY, final float hitZ) {
+        final TileWireless tg = this.getTileEntity(w, pos);
 
-	@Override
-	protected IProperty[] getAEStates()
-	{
-		return new IProperty[] { STATE };
-	}
+        if (tg != null && !player.isSneaking()) {
+            if (Platform.isServer()) {
+                Platform.openGUI(player, tg, AEPartLocation.fromFacing(side), GuiBridge.GUI_WIRELESS);
+            }
+            return true;
+        }
 
-	@Override
-	public boolean onBlockActivated( final World w, final BlockPos pos, final IBlockState state, final EntityPlayer player, final EnumHand hand, final EnumFacing side, final float hitX, final float hitY, final float hitZ )
-	{
-		final TileWireless tg = this.getTileEntity( w, pos );
+        return super.onBlockActivated(w, pos, state, player, hand, side, hitX, hitY, hitZ);
+    }
 
-		if( tg != null && !player.isSneaking() )
-		{
-			if( Platform.isServer() )
-			{
-				Platform.openGUI( player, tg, AEPartLocation.fromFacing( side ), GuiBridge.GUI_WIRELESS );
-			}
-			return true;
-		}
+    @Override
+    public Iterable<AxisAlignedBB> getSelectedBoundingBoxesFromPool(final World w, final BlockPos pos, final Entity thePlayer, final boolean b) {
+        final TileWireless tile = this.getTileEntity(w, pos);
+        if (tile != null) {
+            final EnumFacing forward = tile.getForward();
 
-		return super.onBlockActivated( w, pos, state, player, hand, side, hitX, hitY, hitZ );
-	}
+            double minX = 0;
+            double minY = 0;
+            double minZ = 0;
+            double maxX = 1;
+            double maxY = 1;
+            double maxZ = 1;
 
-	@Override
-	public Iterable<AxisAlignedBB> getSelectedBoundingBoxesFromPool( final World w, final BlockPos pos, final Entity thePlayer, final boolean b )
-	{
-		final TileWireless tile = this.getTileEntity( w, pos );
-		if( tile != null )
-		{
-			final EnumFacing forward = tile.getForward();
+            switch (forward) {
+                case DOWN:
+                    minZ = minX = 3.0 / 16.0;
+                    maxZ = maxX = 13.0 / 16.0;
+                    maxY = 1.0;
+                    minY = 5.0 / 16.0;
+                    break;
+                case EAST:
+                    minZ = minY = 3.0 / 16.0;
+                    maxZ = maxY = 13.0 / 16.0;
+                    maxX = 11.0 / 16.0;
+                    minX = 0.0;
+                    break;
+                case NORTH:
+                    minY = minX = 3.0 / 16.0;
+                    maxY = maxX = 13.0 / 16.0;
+                    maxZ = 1.0;
+                    minZ = 5.0 / 16.0;
+                    break;
+                case SOUTH:
+                    minY = minX = 3.0 / 16.0;
+                    maxY = maxX = 13.0 / 16.0;
+                    maxZ = 11.0 / 16.0;
+                    minZ = 0.0;
+                    break;
+                case UP:
+                    minZ = minX = 3.0 / 16.0;
+                    maxZ = maxX = 13.0 / 16.0;
+                    maxY = 11.0 / 16.0;
+                    minY = 0.0;
+                    break;
+                case WEST:
+                    minZ = minY = 3.0 / 16.0;
+                    maxZ = maxY = 13.0 / 16.0;
+                    maxX = 1.0;
+                    minX = 5.0 / 16.0;
+                    break;
+                default:
+                    break;
+            }
 
-			double minX = 0;
-			double minY = 0;
-			double minZ = 0;
-			double maxX = 1;
-			double maxY = 1;
-			double maxZ = 1;
+            return Collections.singletonList(new AxisAlignedBB(minX, minY, minZ, maxX, maxY, maxZ));
+        }
+        return Collections.singletonList(new AxisAlignedBB(0.0, 0, 0.0, 1.0, 1.0, 1.0));
+    }
 
-			switch( forward )
-			{
-				case DOWN:
-					minZ = minX = 3.0 / 16.0;
-					maxZ = maxX = 13.0 / 16.0;
-					maxY = 1.0;
-					minY = 5.0 / 16.0;
-					break;
-				case EAST:
-					minZ = minY = 3.0 / 16.0;
-					maxZ = maxY = 13.0 / 16.0;
-					maxX = 11.0 / 16.0;
-					minX = 0.0;
-					break;
-				case NORTH:
-					minY = minX = 3.0 / 16.0;
-					maxY = maxX = 13.0 / 16.0;
-					maxZ = 1.0;
-					minZ = 5.0 / 16.0;
-					break;
-				case SOUTH:
-					minY = minX = 3.0 / 16.0;
-					maxY = maxX = 13.0 / 16.0;
-					maxZ = 11.0 / 16.0;
-					minZ = 0.0;
-					break;
-				case UP:
-					minZ = minX = 3.0 / 16.0;
-					maxZ = maxX = 13.0 / 16.0;
-					maxY = 11.0 / 16.0;
-					minY = 0.0;
-					break;
-				case WEST:
-					minZ = minY = 3.0 / 16.0;
-					maxZ = maxY = 13.0 / 16.0;
-					maxX = 1.0;
-					minX = 5.0 / 16.0;
-					break;
-				default:
-					break;
-			}
+    @Override
+    public void addCollidingBlockToList(final World w, final BlockPos pos, final AxisAlignedBB bb, final List<AxisAlignedBB> out, final Entity e) {
+        final TileWireless tile = this.getTileEntity(w, pos);
+        if (tile != null) {
+            final EnumFacing forward = tile.getForward();
 
-			return Collections.singletonList( new AxisAlignedBB( minX, minY, minZ, maxX, maxY, maxZ ) );
-		}
-		return Collections.singletonList( new AxisAlignedBB( 0.0, 0, 0.0, 1.0, 1.0, 1.0 ) );
-	}
+            double minX = 0;
+            double minY = 0;
+            double minZ = 0;
+            double maxX = 1;
+            double maxY = 1;
+            double maxZ = 1;
 
-	@Override
-	public void addCollidingBlockToList( final World w, final BlockPos pos, final AxisAlignedBB bb, final List<AxisAlignedBB> out, final Entity e )
-	{
-		final TileWireless tile = this.getTileEntity( w, pos );
-		if( tile != null )
-		{
-			final EnumFacing forward = tile.getForward();
+            switch (forward) {
+                case DOWN:
+                    minZ = minX = 3.0 / 16.0;
+                    maxZ = maxX = 13.0 / 16.0;
+                    maxY = 1.0;
+                    minY = 5.0 / 16.0;
+                    break;
+                case EAST:
+                    minZ = minY = 3.0 / 16.0;
+                    maxZ = maxY = 13.0 / 16.0;
+                    maxX = 11.0 / 16.0;
+                    minX = 0.0;
+                    break;
+                case NORTH:
+                    minY = minX = 3.0 / 16.0;
+                    maxY = maxX = 13.0 / 16.0;
+                    maxZ = 1.0;
+                    minZ = 5.0 / 16.0;
+                    break;
+                case SOUTH:
+                    minY = minX = 3.0 / 16.0;
+                    maxY = maxX = 13.0 / 16.0;
+                    maxZ = 11.0 / 16.0;
+                    minZ = 0.0;
+                    break;
+                case UP:
+                    minZ = minX = 3.0 / 16.0;
+                    maxZ = maxX = 13.0 / 16.0;
+                    maxY = 11.0 / 16.0;
+                    minY = 0.0;
+                    break;
+                case WEST:
+                    minZ = minY = 3.0 / 16.0;
+                    maxZ = maxY = 13.0 / 16.0;
+                    maxX = 1.0;
+                    minX = 5.0 / 16.0;
+                    break;
+                default:
+                    break;
+            }
 
-			double minX = 0;
-			double minY = 0;
-			double minZ = 0;
-			double maxX = 1;
-			double maxY = 1;
-			double maxZ = 1;
+            out.add(new AxisAlignedBB(minX, minY, minZ, maxX, maxY, maxZ));
+        } else {
+            out.add(new AxisAlignedBB(0.0, 0.0, 0.0, 1.0, 1.0, 1.0));
+        }
+    }
 
-			switch( forward )
-			{
-				case DOWN:
-					minZ = minX = 3.0 / 16.0;
-					maxZ = maxX = 13.0 / 16.0;
-					maxY = 1.0;
-					minY = 5.0 / 16.0;
-					break;
-				case EAST:
-					minZ = minY = 3.0 / 16.0;
-					maxZ = maxY = 13.0 / 16.0;
-					maxX = 11.0 / 16.0;
-					minX = 0.0;
-					break;
-				case NORTH:
-					minY = minX = 3.0 / 16.0;
-					maxY = maxX = 13.0 / 16.0;
-					maxZ = 1.0;
-					minZ = 5.0 / 16.0;
-					break;
-				case SOUTH:
-					minY = minX = 3.0 / 16.0;
-					maxY = maxX = 13.0 / 16.0;
-					maxZ = 11.0 / 16.0;
-					minZ = 0.0;
-					break;
-				case UP:
-					minZ = minX = 3.0 / 16.0;
-					maxZ = maxX = 13.0 / 16.0;
-					maxY = 11.0 / 16.0;
-					minY = 0.0;
-					break;
-				case WEST:
-					minZ = minY = 3.0 / 16.0;
-					maxZ = maxY = 13.0 / 16.0;
-					maxX = 1.0;
-					minX = 5.0 / 16.0;
-					break;
-				default:
-					break;
-			}
+    @Override
+    public boolean isFullCube(IBlockState state) {
+        return false;
+    }
 
-			out.add( new AxisAlignedBB( minX, minY, minZ, maxX, maxY, maxZ ) );
-		}
-		else
-		{
-			out.add( new AxisAlignedBB( 0.0, 0.0, 0.0, 1.0, 1.0, 1.0 ) );
-		}
-	}
+    enum State implements IStringSerializable {
+        OFF,
+        ON,
+        HAS_CHANNEL;
 
-	@Override
-	public boolean isFullCube( IBlockState state )
-	{
-		return false;
-	}
+        @Override
+        public String getName() {
+            return this.name().toLowerCase();
+        }
+    }
 
 }

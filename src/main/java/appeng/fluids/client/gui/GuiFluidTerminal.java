@@ -67,10 +67,10 @@ import appeng.util.Platform;
  */
 public class GuiFluidTerminal extends AEBaseMEGui implements ISortSource, IConfigManagerHost
 {
-	private final List<SlotFluidME> meFluidSlots = new LinkedList<>();
-	private final FluidRepo repo;
+	public final List<SlotFluidME> meFluidSlots = new LinkedList<>();
+	public final FluidRepo repo;
 	private final IConfigManager configSrc;
-	private final ContainerFluidTerminal container;
+	public final ContainerFluidTerminal container;
 	private final int offsetX = 9;
 	private int rows = 6;
 	private int perRow = 9;

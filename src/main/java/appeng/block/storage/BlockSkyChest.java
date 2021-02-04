@@ -19,11 +19,12 @@
 package appeng.block.storage;
 
 
-import java.util.Collections;
-import java.util.List;
-
-import javax.annotation.Nullable;
-
+import appeng.api.util.AEPartLocation;
+import appeng.block.AEBaseTileBlock;
+import appeng.core.sync.GuiBridge;
+import appeng.helpers.ICustomCollision;
+import appeng.tile.storage.TileSkyChest;
+import appeng.util.Platform;
 import net.minecraft.block.material.Material;
 import net.minecraft.block.state.IBlockState;
 import net.minecraft.entity.Entity;
@@ -36,94 +37,80 @@ import net.minecraft.util.math.AxisAlignedBB;
 import net.minecraft.util.math.BlockPos;
 import net.minecraft.world.World;
 
-import appeng.api.util.AEPartLocation;
-import appeng.block.AEBaseTileBlock;
-import appeng.core.sync.GuiBridge;
-import appeng.helpers.ICustomCollision;
-import appeng.tile.storage.TileSkyChest;
-import appeng.util.Platform;
+import javax.annotation.Nullable;
+import java.util.Collections;
+import java.util.List;
 
 
-public class BlockSkyChest extends AEBaseTileBlock implements ICustomCollision
-{
+public class BlockSkyChest extends AEBaseTileBlock implements ICustomCollision {
 
-	private static final double AABB_OFFSET_BOTTOM = 0.00;
-	private static final double AABB_OFFSET_SIDES = 0.06;
-	private static final double AABB_OFFSET_TOP = 0.125;
+    private static final double AABB_OFFSET_BOTTOM = 0.00;
+    private static final double AABB_OFFSET_SIDES = 0.06;
+    private static final double AABB_OFFSET_TOP = 0.125;
+    public final SkyChestType type;
 
-	public enum SkyChestType
-	{
-		STONE, BLOCK
-	};
+    public BlockSkyChest(final SkyChestType type) {
+        super(Material.ROCK);
+        this.setOpaque(this.setFullSize(false));
+        this.lightOpacity = 0;
+        this.setHardness(50);
+        this.blockResistance = 150.0f;
+        this.type = type;
+    }
 
-	public final SkyChestType type;
+    @Override
+    public EnumBlockRenderType getRenderType(IBlockState state) {
+        return EnumBlockRenderType.ENTITYBLOCK_ANIMATED;
+    }
 
-	public BlockSkyChest( final SkyChestType type )
-	{
-		super( Material.ROCK );
-		this.setOpaque( this.setFullSize( false ) );
-		this.lightOpacity = 0;
-		this.setHardness( 50 );
-		this.blockResistance = 150.0f;
-		this.type = type;
-	}
+    @Override
+    public boolean onActivated(final World w, final BlockPos pos, final EntityPlayer player, final EnumHand hand, final @Nullable ItemStack heldItem, final EnumFacing side, final float hitX, final float hitY, final float hitZ) {
+        if (Platform.isServer()) {
+            Platform.openGUI(player, this.getTileEntity(w, pos), AEPartLocation.fromFacing(side), GuiBridge.GUI_SKYCHEST);
+        }
 
-	@Override
-	public EnumBlockRenderType getRenderType( IBlockState state )
-	{
-		return EnumBlockRenderType.ENTITYBLOCK_ANIMATED;
-	}
+        return true;
+    }
 
-	@Override
-	public boolean onActivated( final World w, final BlockPos pos, final EntityPlayer player, final EnumHand hand, final @Nullable ItemStack heldItem, final EnumFacing side, final float hitX, final float hitY, final float hitZ )
-	{
-		if( Platform.isServer() )
-		{
-			Platform.openGUI( player, this.getTileEntity( w, pos ), AEPartLocation.fromFacing( side ), GuiBridge.GUI_SKYCHEST );
-		}
+    @Override
+    public Iterable<AxisAlignedBB> getSelectedBoundingBoxesFromPool(final World w, final BlockPos pos, final Entity thePlayer, final boolean b) {
+        final AxisAlignedBB aabb = this.computeAABB(w, pos);
 
-		return true;
-	}
+        return Collections.singletonList(aabb);
+    }
 
-	@Override
-	public Iterable<AxisAlignedBB> getSelectedBoundingBoxesFromPool( final World w, final BlockPos pos, final Entity thePlayer, final boolean b )
-	{
-		final AxisAlignedBB aabb = this.computeAABB( w, pos );
+    @Override
+    public void addCollidingBlockToList(final World w, final BlockPos pos, final AxisAlignedBB bb, final List<AxisAlignedBB> out, final Entity e) {
+        final AxisAlignedBB aabb = this.computeAABB(w, pos);
 
-		return Collections.singletonList( aabb );
-	}
+        out.add(aabb);
+    }
 
-	@Override
-	public void addCollidingBlockToList( final World w, final BlockPos pos, final AxisAlignedBB bb, final List<AxisAlignedBB> out, final Entity e )
-	{
-		final AxisAlignedBB aabb = this.computeAABB( w, pos );
+    private AxisAlignedBB computeAABB(final World w, final BlockPos pos) {
+        final TileSkyChest sk = this.getTileEntity(w, pos);
+        EnumFacing o = EnumFacing.UP;
 
-		out.add( aabb );
-	}
+        if (sk != null) {
+            o = sk.getUp();
+        }
 
-	private AxisAlignedBB computeAABB( final World w, final BlockPos pos )
-	{
-		final TileSkyChest sk = this.getTileEntity( w, pos );
-		EnumFacing o = EnumFacing.UP;
+        final double offsetX = o.getFrontOffsetX() == 0 ? AABB_OFFSET_SIDES : 0.0;
+        final double offsetY = o.getFrontOffsetY() == 0 ? AABB_OFFSET_SIDES : 0.0;
+        final double offsetZ = o.getFrontOffsetZ() == 0 ? AABB_OFFSET_SIDES : 0.0;
 
-		if( sk != null )
-		{
-			o = sk.getUp();
-		}
+        // for x/z top and bottom is swapped
+        final double minX = Math.max(0.0, offsetX + (o.getFrontOffsetX() < 0 ? AABB_OFFSET_BOTTOM : (o.getFrontOffsetX() * AABB_OFFSET_TOP)));
+        final double minY = Math.max(0.0, offsetY + (o.getFrontOffsetY() < 0 ? AABB_OFFSET_TOP : (o.getFrontOffsetY() * AABB_OFFSET_BOTTOM)));
+        final double minZ = Math.max(0.0, offsetZ + (o.getFrontOffsetZ() < 0 ? AABB_OFFSET_BOTTOM : (o.getFrontOffsetZ() * AABB_OFFSET_TOP)));
 
-		final double offsetX = o.getFrontOffsetX() == 0 ? AABB_OFFSET_SIDES : 0.0;
-		final double offsetY = o.getFrontOffsetY() == 0 ? AABB_OFFSET_SIDES : 0.0;
-		final double offsetZ = o.getFrontOffsetZ() == 0 ? AABB_OFFSET_SIDES : 0.0;
+        final double maxX = Math.min(1.0, 1.0 - offsetX - (o.getFrontOffsetX() < 0 ? AABB_OFFSET_TOP : (o.getFrontOffsetX() * AABB_OFFSET_BOTTOM)));
+        final double maxY = Math.min(1.0, 1.0 - offsetY - (o.getFrontOffsetY() < 0 ? AABB_OFFSET_BOTTOM : (o.getFrontOffsetY() * AABB_OFFSET_TOP)));
+        final double maxZ = Math.min(1.0, 1.0 - offsetZ - (o.getFrontOffsetZ() < 0 ? AABB_OFFSET_TOP : (o.getFrontOffsetZ() * AABB_OFFSET_BOTTOM)));
 
-		// for x/z top and bottom is swapped
-		final double minX = Math.max( 0.0, offsetX + ( o.getFrontOffsetX() < 0 ? AABB_OFFSET_BOTTOM : ( o.getFrontOffsetX() * AABB_OFFSET_TOP ) ) );
-		final double minY = Math.max( 0.0, offsetY + ( o.getFrontOffsetY() < 0 ? AABB_OFFSET_TOP : ( o.getFrontOffsetY() * AABB_OFFSET_BOTTOM ) ) );
-		final double minZ = Math.max( 0.0, offsetZ + ( o.getFrontOffsetZ() < 0 ? AABB_OFFSET_BOTTOM : ( o.getFrontOffsetZ() * AABB_OFFSET_TOP ) ) );
+        return new AxisAlignedBB(minX, minY, minZ, maxX, maxY, maxZ);
+    }
 
-		final double maxX = Math.min( 1.0, 1.0 - offsetX - ( o.getFrontOffsetX() < 0 ? AABB_OFFSET_TOP : ( o.getFrontOffsetX() * AABB_OFFSET_BOTTOM ) ) );
-		final double maxY = Math.min( 1.0, 1.0 - offsetY - ( o.getFrontOffsetY() < 0 ? AABB_OFFSET_BOTTOM : ( o.getFrontOffsetY() * AABB_OFFSET_TOP ) ) );
-		final double maxZ = Math.min( 1.0, 1.0 - offsetZ - ( o.getFrontOffsetZ() < 0 ? AABB_OFFSET_TOP : ( o.getFrontOffsetZ() * AABB_OFFSET_BOTTOM ) ) );
-
-		return new AxisAlignedBB( minX, minY, minZ, maxX, maxY, maxZ );
-	}
+    public enum SkyChestType {
+        STONE, BLOCK
+    }
 }

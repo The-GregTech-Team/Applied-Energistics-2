@@ -2,10 +2,12 @@
 [![Latest Release](https://img.shields.io/github/release/AppliedEnergistics/Applied-Energistics-2.svg?label=Latest%20Release&style=flat-square)](https://github.com/AppliedEnergistics/Applied-Energistics-2/releases)
 
 # Applied Energistics 2
+This version is a fork
 
 ## Table of Contents
 
 * [About](#about)
+* [Changes](#changes)
 * [Contacts](#contacts)
 * [License](#license)
 * [Downloads](#downloads)
@@ -21,6 +23,9 @@
 ## About
 
 A Mod about Matter, Energy and using them to conquer the world..
+
+## Changes
+- JEI Recipes about usages and crafting
 
 ## Contacts
 

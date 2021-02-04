@@ -19,40 +19,34 @@
 package appeng.me.helpers;
 
 
-import java.util.Optional;
-
-import net.minecraft.entity.player.EntityPlayer;
-
 import appeng.api.networking.security.IActionHost;
 import appeng.api.networking.security.IActionSource;
+import net.minecraft.entity.player.EntityPlayer;
+
+import java.util.Optional;
 
 
-public class MachineSource implements IActionSource
-{
+public class MachineSource implements IActionSource {
 
-	private final IActionHost via;
+    private final IActionHost via;
 
-	public MachineSource( final IActionHost v )
-	{
-		this.via = v;
-	}
+    public MachineSource(final IActionHost v) {
+        this.via = v;
+    }
 
-	@Override
-	public Optional<EntityPlayer> player()
-	{
-		return Optional.empty();
-	}
+    @Override
+    public Optional<EntityPlayer> player() {
+        return Optional.empty();
+    }
 
-	@Override
-	public Optional<IActionHost> machine()
-	{
-		return Optional.of( this.via );
-	}
+    @Override
+    public Optional<IActionHost> machine() {
+        return Optional.of(this.via);
+    }
 
-	@Override
-	public <T> Optional<T> context( Class<T> key )
-	{
-		return Optional.empty();
-	}
+    @Override
+    public <T> Optional<T> context(Class<T> key) {
+        return Optional.empty();
+    }
 
 }
